@@ -1,0 +1,83 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 태그 확인/생성을 위해 전체 히스토리
+
+      # 런타임(Keycloak)이 Java 21 이므로 빌드도 21
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Gradle 캐시 + wrapper 검증
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew clean build --no-daemon --console=plain
+
+      # build.gradle.kts 에서 version 추출
+      - name: Extract version
+        id: ver
+        run: |
+          VERSION=$(grep -E '^version = ' build.gradle.kts | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version: $VERSION"
+
+      # 동일 버전 태그가 이미 있으면 릴리스 건너뜀
+      - name: Check tag exists
+        id: tag
+        run: |
+          if git rev-parse "v${{ steps.ver.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "EXISTS=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # GitHub Release 생성 (태그 없을 때만, 태그는 액션이 생성)
+      - name: Create Release
+        if: steps.tag.outputs.EXISTS == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.VERSION }}
+          name: Release v${{ steps.ver.outputs.VERSION }}
+          body: |
+            ## 🚀 astrago-doosan-enb-spi v${{ steps.ver.outputs.VERSION }}
+
+            Azure AD 승인 게이트 Keycloak SPI (Kotlin).
+
+            - Commit: ${{ github.sha }}
+            - Build: ${{ github.run_number }}
+
+            ### 적용 (요약)
+            jar 를 `astrago-keycloak-theme` 이미지의 `/opt/keycloak/providers/` 에 번들 →
+            태그 bump → images_list.txt 미러 → `astrago.keycloak.tag` 변경 → `helmfile apply`.
+            (자세한 절차는 README 참고)
+          files: build/libs/*.jar
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      # 빌드 산출물 업로드 (릴리스와 별개로 항상)
+      - name: Upload jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: astrago-doosan-enb-spi-jar
+          path: build/libs/*.jar
+          retention-days: 30
