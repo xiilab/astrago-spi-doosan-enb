@@ -38,7 +38,7 @@ class ApprovalAuthenticatorFactory : AuthenticatorFactory {
     override fun isUserSetupAllowed(): Boolean = false
 
     override fun getHelpText(): String =
-        "Azure AD 로그인 후 Astrago 백엔드 승인 상태(GET /api/v1/user/approval/{email})를 확인하여 미승인 사용자의 로그인을 차단합니다."
+        "Azure AD 로그인 후 Astrago 백엔드 승인 상태(POST /api/v1/user/approval/check)를 확인하여 미승인 사용자의 로그인을 차단합니다."
 
     override fun getConfigProperties(): List<ProviderConfigProperty> = CONFIG_PROPERTIES
 

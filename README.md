@@ -37,7 +37,7 @@ sequenceDiagram
     AD-->>KC: 인증 성공
     Note over KC: 브로커가 Keycloak 사용자 생성/링크
     KC->>SPI: Post-Login Flow 진입
-    SPI->>BE: GET /api/v1/user/approval/{email}
+    SPI->>BE: POST /api/v1/user/approval/check { email }
     BE-->>SPI: { exists, approved, message }
     alt approved = true
         SPI-->>KC: success()
@@ -53,13 +53,16 @@ sequenceDiagram
 
 ## 백엔드 API 계약 (필요)
 
-SPI는 아래 엔드포인트를 호출한다. **백엔드에 신규 구현 필요** (현재 미구현).
+SPI는 아래 엔드포인트를 호출한다. (백엔드 구현 완료 — `astrago-backend-v2-doosan-enb`)
 
 ```
-GET {backend.api.url}/api/v1/user/approval/{email}   # 인증 불필요(permitAll) + 서명/IP 제한 권장
+POST {backend.api.url}/api/v1/user/approval/check   # 인증 불필요(permitAll) + 서명/IP 제한 권장
+Content-Type: application/json
+{ "email": "user@doosan.com" }                       # 이메일은 본문으로 전달(URL/로그 PII 노출 방지)
+
 200 OK
 {
-  "exists":   true,    // 승인 대상에 존재(예: v_keycloak_account)
+  "exists":   true,    // 승인 대상(sso_account_approval)에 존재
   "approved": false,   // approval_status == APPROVED
   "message":  "계정 승인 대기 중입니다."
 }
@@ -145,7 +148,7 @@ kubectl logs -n astrago keycloakx-0 -c keycloak | grep -i "providers\|approval"
 - 롤백: 해당 step 을 **Disabled** 로 바꾸거나 IdP 의 Post Login Flow 연결 해제 → 즉시 게이트 해제(재배포 불필요)
 
 > [!warning] 순서 — SPI 는 fail-closed
-> 백엔드 `GET /api/v1/user/approval/{email}` 가 **먼저** 떠 있어야 한다. 없으면 백엔드 연결 실패 → `exists=false`
+> 백엔드 `POST /api/v1/user/approval/check` 가 **먼저** 떠 있어야 한다. 없으면 백엔드 연결 실패 → `exists=false`
 > → **전원 차단**. 따라서: 백엔드 API → SPI 이미지 배포 → (flow 는 Disabled 유지) → 백엔드 확인 후 Required 로 ON.
 
 ## CI / Release (GitHub Actions)
