@@ -67,6 +67,17 @@ class ApprovalAuthenticatorFactory : AuthenticatorFactory {
             .helpText("승인 신청을 하지 않은 사용자에게 표시할 메시지")
             .defaultValue(ApprovalAuthenticator.DEFAULT_PENDING_MESSAGE)
             .add()
+            .property()
+            .name(ApprovalAuthenticator.CONFIG_FRONTEND_URL)
+            .type(ProviderConfigProperty.STRING_TYPE)
+            .label("프론트 승인안내 URL")
+            .helpText(
+                "미승인 사용자를 안내할 프론트 페이지 URL (예: https://<앱>/ko/account-approval). " +
+                    "설정 시 차단 대신 이 URL 로 리다이렉트하며 ?status=not-requested|pending 를 붙인다. " +
+                    "미설정 시 로그인테마 에러 페이지로 fallback.",
+            )
+            .defaultValue("")
+            .add()
             .build()
     }
 }
