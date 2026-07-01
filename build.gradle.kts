@@ -2,10 +2,11 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("jvm") version "2.1.0"
+    id("com.gradleup.shadow") version "8.3.5"
 }
 
 group = "com.xiilab.astrago.keycloak"
-version = "1.1.0"
+version = "1.1.1"
 
 repositories {
     mavenCentral()
@@ -45,6 +46,20 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// 일반 jar 는 비활성화 — Kotlin 으로 작성된 SPI 라 kotlin-stdlib 를 포함한
+// fat jar 만 배포해야 Keycloak provider 로딩이 가능하다.
 tasks.jar {
+    enabled = false
+}
+
+// fat jar 가 기본 산출물 이름(astrago-doosan-enb-spi-<version>.jar)을 차지.
+// compileOnly 의존성(keycloak, jackson 등)은 runtimeClasspath 가 아니라 제외되고,
+// kotlin-stdlib 등 런타임 의존성만 번들된다.
+tasks.shadowJar {
     archiveBaseName.set("astrago-doosan-enb-spi")
+    archiveClassifier.set("")
+}
+
+tasks.build {
+    dependsOn(tasks.shadowJar)
 }
