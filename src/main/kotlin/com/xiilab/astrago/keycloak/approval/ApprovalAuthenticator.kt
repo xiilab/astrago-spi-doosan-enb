@@ -92,13 +92,19 @@ class ApprovalAuthenticator : Authenticator {
     ) {
         val frontendUrl = config[CONFIG_FRONTEND_URL]?.trim()
         if (!frontendUrl.isNullOrEmpty()) {
-            val uri = UriBuilder.fromUri(frontendUrl)
-                .queryParam("status", statusKind)
-                .build()
-            context.failure(AuthenticationFlowError.ACCESS_DENIED, Response.seeOther(uri).build())
-        } else {
-            deny(context, message)
+            // 잘못된 URL(설정 오타 등)로 UriBuilder 가 예외를 던지면 차단 흐름이 내부 오류로
+            // 끝나므로, 예외를 흡수하고 에러 페이지로 fallback 한다.
+            try {
+                val uri = UriBuilder.fromUri(frontendUrl)
+                    .queryParam("status", statusKind)
+                    .build()
+                context.failure(AuthenticationFlowError.ACCESS_DENIED, Response.seeOther(uri).build())
+                return
+            } catch (e: Exception) {
+                log.errorf(e, "잘못된 %s: '%s' — 에러 페이지로 fallback", CONFIG_FRONTEND_URL, frontendUrl)
+            }
         }
+        deny(context, message)
     }
 
     /** 프론트 URL 미설정 시 fallback — Keycloak 로그인테마 에러 페이지에 메시지를 표시한다. */
