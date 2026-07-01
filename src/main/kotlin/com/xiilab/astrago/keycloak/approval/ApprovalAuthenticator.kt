@@ -1,6 +1,7 @@
 package com.xiilab.astrago.keycloak.approval
 
 import jakarta.ws.rs.core.Response
+import jakarta.ws.rs.core.UriBuilder
 import org.jboss.logging.Logger
 import org.keycloak.authentication.AuthenticationFlowContext
 import org.keycloak.authentication.AuthenticationFlowError
@@ -16,6 +17,11 @@ import org.keycloak.models.UserModel
  * - exists=false  : 승인 미신청 → 차단(미신청 안내)
  * - approved=false: 승인 대기/거부 → 차단(대기·거부 안내)
  * - approved=true : 로그인 허용
+ *
+ * 차단 시 동작:
+ * - 프론트 안내 URL(frontend.approval.url) 이 설정돼 있으면 해당 페이지로 리다이렉트한다
+ *   ({url}?status=not-requested|pending). 미승인 안내 화면을 프론트(Next.js)가 담당한다.
+ * - 미설정 시 기존 Keycloak 에러 페이지(로그인테마)로 fallback 한다.
  *
  * 게이트는 "순서"가 아니라 "현재 승인 상태"만 본다(idempotent). 승인 전에 먼저 로그인해도
  * 미승인 페이지만 보일 뿐 깨지지 않는다.
@@ -45,12 +51,22 @@ class ApprovalAuthenticator : Authenticator {
         when {
             !status.exists -> {
                 log.warnf("승인 미신청 사용자: %s", email)
-                deny(context, config[CONFIG_PENDING_MESSAGE]?.takeIf { it.isNotBlank() } ?: DEFAULT_PENDING_MESSAGE)
+                handleDenied(
+                    context,
+                    config,
+                    STATUS_NOT_REQUESTED,
+                    config[CONFIG_PENDING_MESSAGE]?.takeIf { it.isNotBlank() } ?: DEFAULT_PENDING_MESSAGE,
+                )
             }
 
             !status.approved -> {
                 log.warnf("승인 대기/거부 사용자: %s", email)
-                deny(context, config[CONFIG_ERROR_MESSAGE]?.takeIf { it.isNotBlank() } ?: DEFAULT_ERROR_MESSAGE)
+                handleDenied(
+                    context,
+                    config,
+                    STATUS_PENDING,
+                    config[CONFIG_ERROR_MESSAGE]?.takeIf { it.isNotBlank() } ?: DEFAULT_ERROR_MESSAGE,
+                )
             }
 
             else -> {
@@ -65,6 +81,27 @@ class ApprovalAuthenticator : Authenticator {
         context.success()
     }
 
+    /**
+     * 차단 처리. 프론트 안내 URL 이 설정돼 있으면 리다이렉트, 아니면 에러 페이지로 fallback.
+     */
+    private fun handleDenied(
+        context: AuthenticationFlowContext,
+        config: Map<String, String>,
+        statusKind: String,
+        message: String,
+    ) {
+        val frontendUrl = config[CONFIG_FRONTEND_URL]?.trim()
+        if (!frontendUrl.isNullOrEmpty()) {
+            val uri = UriBuilder.fromUri(frontendUrl)
+                .queryParam("status", statusKind)
+                .build()
+            context.failure(AuthenticationFlowError.ACCESS_DENIED, Response.seeOther(uri).build())
+        } else {
+            deny(context, message)
+        }
+    }
+
+    /** 프론트 URL 미설정 시 fallback — Keycloak 로그인테마 에러 페이지에 메시지를 표시한다. */
     private fun deny(context: AuthenticationFlowContext, message: String) {
         val response: Response = context.form()
             .setError(message)
@@ -91,6 +128,11 @@ class ApprovalAuthenticator : Authenticator {
         const val CONFIG_BACKEND_URL = "backend.api.url"
         const val CONFIG_ERROR_MESSAGE = "error.message"
         const val CONFIG_PENDING_MESSAGE = "pending.message"
+        const val CONFIG_FRONTEND_URL = "frontend.approval.url"
+
+        // 프론트 안내 페이지로 전달하는 상태 값(이메일 등 PII 는 전달하지 않는다).
+        const val STATUS_NOT_REQUESTED = "not-requested"
+        const val STATUS_PENDING = "pending"
 
         const val DEFAULT_PENDING_MESSAGE =
             "승인 신청이 필요합니다. Service Navigator를 통해 계정 승인을 신청해주세요."
